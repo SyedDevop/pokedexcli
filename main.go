@@ -11,21 +11,14 @@ import (
 )
 
 func getLine() string {
-	oldSate, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer term.Restore(int(os.Stdin.Fd()), oldSate)
-
-	t := term.NewTerminal(os.Stdin, "Pokedex > ")
-
-	line, err := t.ReadLine()
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Pokedex > ")
+	line, err := reader.ReadString('\n')
 	if err != nil {
 		if err != io.EOF {
 			fmt.Fprintf(os.Stderr, "unable readline: %+v\n", err)
 		}
 		fmt.Printf("Thanks for playing!")
-		term.Restore(int(os.Stdin.Fd()), oldSate)
 		os.Exit(0)
 	}
 	return strings.TrimSpace(line)

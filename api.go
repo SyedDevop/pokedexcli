@@ -29,6 +29,7 @@ type Result struct {
 type Clint struct {
 	HTTPClint *http.Client
 	prevUri   *string
+	cacheData map[string]Pokedex
 	nextUri   string
 }
 
@@ -37,6 +38,7 @@ func NewClient() *Clint {
 		nextUri:   "https://pokeapi.co/api/v2/location-area/?offset=0&limit=20",
 		prevUri:   nil,
 		HTTPClint: &http.Client{},
+		cacheData: make(map[string]Pokedex),
 	}
 }
 
@@ -60,7 +62,16 @@ func (c *Clint) sendRequest(req *http.Request, v interface{}) error {
 	return nil
 }
 
+// FIX : bug wen I'm going back to first page
+// and then I try to get data from the next page
+// i don't get the initial page 0
 func (c *Clint) GetPokeList() (*Pokedex, error) {
+	cacheData, dataExists := c.cacheData[c.nextUri]
+	if dataExists {
+		c.nextUri = cacheData.Next
+		c.prevUri = cacheData.Previous
+		return &cacheData, nil
+	}
 	req, err := http.NewRequest(http.MethodGet, c.nextUri, nil)
 	if err != nil {
 		return nil, err
@@ -71,12 +82,20 @@ func (c *Clint) GetPokeList() (*Pokedex, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	c.cacheData[c.nextUri] = data
 	c.nextUri = data.Next
 	c.prevUri = data.Previous
 	return &data, nil
 }
 
 func (c *Clint) GetPokePrevesList() (*Pokedex, error) {
+	cacheData, dataExists := c.cacheData[*c.prevUri]
+	if dataExists {
+		c.nextUri = cacheData.Next
+		c.prevUri = cacheData.Previous
+		return &cacheData, nil
+	}
 	req, err := http.NewRequest(http.MethodGet, *c.prevUri, nil)
 	if err != nil {
 		return nil, err
@@ -87,7 +106,6 @@ func (c *Clint) GetPokePrevesList() (*Pokedex, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	c.nextUri = data.Next
 	c.prevUri = data.Previous
 	return &data, nil

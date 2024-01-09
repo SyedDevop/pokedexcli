@@ -1,13 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
-
-	"golang.org/x/term"
 )
 
 func getLine() string {
@@ -24,19 +22,21 @@ func getLine() string {
 	return strings.TrimSpace(line)
 }
 
-// TODO : Do some code cleanup using boot.dev example.
 func main() {
-	command := getCommands()
+	commands := getCommands()
+	clint := NewClient()
 	for {
 		line := getLine()
-		fmt.Printf("line: %v\n", line)
-
-		if line == "exit" {
-			fmt.Printf("Thanks for playing!")
-			break
+		command, exists := commands[line]
+		if !exists {
+			fmt.Printf("Unknown command: {%s} This are the available commands: \n", line)
+			commands["help"].callback(nil)
+			continue
 		}
-
-		command[line].callback()
-
+		err := command.callback(clint)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
 	}
 }

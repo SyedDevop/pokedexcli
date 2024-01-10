@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sync"
 )
 
 type Pokedex struct {
@@ -29,8 +30,13 @@ type Result struct {
 type Clint struct {
 	HTTPClint *http.Client
 	prevUri   *string
-	cacheData map[string]Pokedex
+	cache     Cache
 	nextUri   string
+}
+
+type Cache struct {
+	data map[string]Pokedex
+	mux  *sync.Mutex
 }
 
 func NewClient() *Clint {
@@ -38,7 +44,10 @@ func NewClient() *Clint {
 		nextUri:   "https://pokeapi.co/api/v2/location-area/?offset=0&limit=20",
 		prevUri:   nil,
 		HTTPClint: &http.Client{},
-		cacheData: make(map[string]Pokedex),
+		cache: Cache{
+			data: make(map[string]Pokedex),
+			mux:  &sync.Mutex{},
+		},
 	}
 }
 
@@ -62,16 +71,35 @@ func (c *Clint) sendRequest(req *http.Request, v interface{}) error {
 	return nil
 }
 
+func (c *Clint) setData(newData Pokedex) {
+	c.cache.mux.Lock()
+	defer c.cache.mux.Unlock()
+
+	if newData.Previous == nil {
+		newData.Previous = c.prevUri
+	}
+
+	c.cache.data[c.nextUri] = newData
+}
+
+func (c *Clint) get(key string) (Pokedex, bool) {
+	c.cache.mux.Lock()
+	defer c.cache.mux.Unlock()
+	cacheData, dataExists := c.cache.data[key]
+	return cacheData, dataExists
+}
+
 // FIX : bug wen I'm going back to first page
 // and then I try to get data from the next page
 // i don't get the initial page 0
 func (c *Clint) GetPokeList() (*Pokedex, error) {
-	cacheData, dataExists := c.cacheData[c.nextUri]
+	cacheData, dataExists := c.get(c.nextUri)
 	if dataExists {
 		c.nextUri = cacheData.Next
 		c.prevUri = cacheData.Previous
 		return &cacheData, nil
 	}
+
 	req, err := http.NewRequest(http.MethodGet, c.nextUri, nil)
 	if err != nil {
 		return nil, err
@@ -83,30 +111,15 @@ func (c *Clint) GetPokeList() (*Pokedex, error) {
 		return nil, err
 	}
 
-	c.cacheData[c.nextUri] = data
+	c.setData(data)
 	c.nextUri = data.Next
 	c.prevUri = data.Previous
 	return &data, nil
 }
 
 func (c *Clint) GetPokePrevesList() (*Pokedex, error) {
-	cacheData, dataExists := c.cacheData[*c.prevUri]
-	if dataExists {
-		c.nextUri = cacheData.Next
-		c.prevUri = cacheData.Previous
-		return &cacheData, nil
-	}
-	req, err := http.NewRequest(http.MethodGet, *c.prevUri, nil)
-	if err != nil {
-		return nil, err
-	}
-	var data Pokedex
-
-	err = c.sendRequest(req, &data)
-	if err != nil {
-		return nil, err
-	}
-	c.nextUri = data.Next
-	c.prevUri = data.Previous
-	return &data, nil
+	cacheData, _ := c.get(*c.prevUri)
+	c.nextUri = cacheData.Next
+	c.prevUri = cacheData.Previous
+	return &cacheData, nil
 }
